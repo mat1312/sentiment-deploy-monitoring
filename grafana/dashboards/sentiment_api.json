@@ -1,0 +1,114 @@
+{
+  "title": "Sentiment API \u2013 Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "uid": "sentiment-api-overview",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "QPS (predictions/min)",
+      "targets": [
+        {
+          "expr": "sum(rate(predictions_total[1m]))"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error rate (/min)",
+      "targets": [
+        {
+          "expr": "sum(rate(prediction_errors_total[1m]))"
+        }
+      ],
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "p95 Latency (s)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(request_latency_seconds_bucket[5m])) by (le))"
+        }
+      ],
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      }
+    },
+    {
+      "type": "graph",
+      "title": "Latency histogram buckets",
+      "targets": [
+        {
+          "expr": "sum(rate(request_latency_seconds_bucket[5m])) by (le)"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "graph",
+      "title": "CPU (model-api)",
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{container=\"model-api\"}[1m])"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "graph",
+      "title": "Memory (model-api)",
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{container=\"model-api\"}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Prediction outcome counts by status",
+      "targets": [
+        {
+          "expr": "sum by (status) (predictions_total)"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}

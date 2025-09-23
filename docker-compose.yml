@@ -1,0 +1,47 @@
+version: "3.9"
+services:
+  model-api:
+    build: .
+    image: sentiment-api:local
+    container_name: model-api
+    environment:
+      - MODEL_URL=${MODEL_URL:-https://github.com/Profession-AI/progetti-devops/raw/refs/heads/main/Deploy%20e%20monitoraggio%20di%20un%20modello%20di%20sentiment%20analysis%20per%20recensioni/sentimentanalysismodel.pkl}
+      - MODEL_PATH=${MODEL_PATH:-/app/model/sentiment.pkl}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SERVICE_NAME=${SERVICE_NAME:-model-api}
+    ports: ["8000:8000"]
+    networks: [monitoring]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    ports: ["9090:9090"]
+    networks: [monitoring]
+    depends_on: [model-api]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    networks: [monitoring]
+    depends_on: [prometheus]
+
+networks:
+  monitoring:
+    driver: bridge
+

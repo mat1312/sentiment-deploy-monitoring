@@ -1,0 +1,8 @@
+﻿services:
+  model-api:
+    volumes:
+      - ./model:/app/model:ro
+    environment:
+      - MODEL_URL=
+      - MODEL_PATH=/app/model/sentiment_analysis_model.pkl
+
