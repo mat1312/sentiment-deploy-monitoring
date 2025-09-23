@@ -1,82 +1,69 @@
 pipeline {
   agent any
+  options { timestamps(); ansiColor('xterm') }
 
   environment {
-    IMAGE_NAME = 'sentiment-api'
-    REGISTRY    = credentials('docker-registry-url')    // e.g. docker.io/youruser
-    REGISTRY_CREDS = credentials('docker-registry-creds')
-    DEPLOY_HOST = credentials('deploy-ssh-host')         // e.g. user@server
-    DOCKER_COMPOSE_PATH = '/opt/sentiment'               // remote path
-  }
-
-  options {
-    timestamps()
-    ansiColor('xterm')
+    IMAGE_NAME    = 'sentiment-api'
+    REGISTRY_HOST = credentials('docker-registry-url')   // es: docker.io  (Secret text)
+    REGISTRY_NS   = 'matteoferrillo'                     // <--- CAMBIA se diverso
+    IMAGE_REPO    = "${REGISTRY_HOST}/${REGISTRY_NS}/${IMAGE_NAME}"
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout') { steps { checkout scm } }
 
-    stage('Setup Python & Test') {
+    // Esegue i test in un container Python, così non servono Python/pip sulla macchina Jenkins
+    stage('Test (container python)') {
       steps {
         sh '''
-          python3 -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements.txt -r requirements-dev.txt
-          pytest -q --junitxml=reports/test-results.xml
+          docker run --rm -v "$PWD":/ws -w /ws python:3.11-slim bash -lc "
+            python -m pip install --upgrade pip &&
+            pip install -r requirements.txt -r requirements-dev.txt &&
+            pytest -q --junitxml=reports/test-results.xml
+          "
         '''
       }
-      post {
-        always {
-          junit 'reports/test-results.xml'
+      post { always { junit 'reports/test-results.xml' } }
+    }
+
+    stage('Build image') {
+      steps {
+        sh 'docker build -t $IMAGE_REPO:$GIT_COMMIT .'
+      }
+    }
+
+    // Push solo su branch main
+    stage('Push (main only)') {
+      when { branch 'main' }
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'docker-registry-creds',    // Username+Password/Token (RW) su Docker Hub
+          usernameVariable: 'USR',
+          passwordVariable: 'PSW'
+        )]) {
+          sh '''
+            echo "$PSW" | docker login "$REGISTRY_HOST" -u "$USR" --password-stdin
+            docker push "$IMAGE_REPO:$GIT_COMMIT"
+            docker tag  "$IMAGE_REPO:$GIT_COMMIT" "$IMAGE_REPO:latest"
+            docker push "$IMAGE_REPO:latest"
+          '''
         }
       }
     }
 
-    stage('Build Docker image') {
+    // Deploy di STAGING locale (porta 18000) usando l'immagine appena buildata
+    stage('Deploy (staging locale)') {
       steps {
         sh '''
-          docker build -t $IMAGE_NAME:$GIT_COMMIT .
-          docker tag $IMAGE_NAME:$GIT_COMMIT $REGISTRY/$IMAGE_NAME:$GIT_COMMIT
-        '''
-      }
-    }
-
-    stage('Push (main only)') {
-      when { branch 'main' }
-      steps {
-        sh '''
-          echo $REGISTRY_CREDS_PSW | docker login $REGISTRY -u $REGISTRY_CREDS_USR --password-stdin
-          docker push $REGISTRY/$IMAGE_NAME:$GIT_COMMIT
-          docker tag $REGISTRY/$IMAGE_NAME:$GIT_COMMIT $REGISTRY/$IMAGE_NAME:latest
-          docker push $REGISTRY/$IMAGE_NAME:latest
-        '''
-      }
-    }
-
-    stage('Deploy') {
-      steps {
-        sh '''
-          ssh -o StrictHostKeyChecking=no $DEPLOY_HOST '
-            set -e
-            mkdir -p $DOCKER_COMPOSE_PATH
-            cd $DOCKER_COMPOSE_PATH
-            # pull newest image (if using registry) or build on host
-            docker pull $REGISTRY/$IMAGE_NAME:latest || true
-            # write compose file if not present (first time) or update image tag
-            # (here we assume the compose in repo is used during first provision)
-            docker compose down || true
-            docker compose up -d --build
-          '
+          docker rm -f sentiment-api-ci || true
+          docker run -d --name sentiment-api-ci -p 18000:8000 "$IMAGE_REPO:$GIT_COMMIT"
         '''
       }
     }
   }
 
   post {
-    success { echo "Pipeline completed successfully." }
-    failure { echo "Pipeline failed." }
+    success { echo '✅ Test, Build, Push (se main) e Deploy di staging completati' }
+    failure { echo '❌ Pipeline failed' }
   }
 }
