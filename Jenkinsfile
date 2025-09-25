@@ -21,12 +21,12 @@ pipeline {
       steps {
         sh '''
           set -e
-          docker run --rm -v "$PWD":/ws -w /ws python:3.11-slim bash -lc '
+          docker run --rm -v "${WORKSPACE}":/ws -w /ws python:3.11-slim bash -c "
             python -m pip install --upgrade pip &&
             pip install -r requirements.txt -r requirements-dev.txt &&
             mkdir -p reports &&
             pytest -q --junitxml=reports/test-results.xml || true
-          '
+          "
         '''
       }
       post {
